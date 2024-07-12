@@ -3,7 +3,8 @@ import matplotlib
 matplotlib.use("TkAgg")
 
 import pyroved as pv
-from main import VesicleDataset, dataset_with_indices
+from main_ved import VesicleDataset
+# from main import VesicleDataset, dataset_with_indices
 
 import torch
 import torch.nn as nn
@@ -26,28 +27,24 @@ from matplotlib.offsetbox import OffsetImage, AnnotationBbox
 
 from tqdm import tqdm
 
-# dir which contains all h5 files, umap.npy, and embeddings.pt
-BASE_PATH = "/data/bccv/dataset/xiaomeng/mossy_terminal/ves"
-
 
 def load():
     train_dataset = VesicleDataset(
         patch_file="patches.npy", transforms=nn.Identity()
     )
-
-    rvae = pv.models.iVAE(
-        train_dataset.data_dim[:2],
-        extra_data_dim=train_dataset.data_dim[2],
+    ved = pv.models.VED(
+        input_dim=train_dataset.data_dim[:2],
+        output_dim=train_dataset.data_dim[:2],
+        input_channels=train_dataset.data_dim[2],
+        output_channels=train_dataset.data_dim[2],
+        # latent_dim=16,
         latent_dim=2,
-        # invariances=["r", "t"],
-        dx_prior=0.5,
-        dy_prior=0.5,
     )  # rotation and translation invariance
 
-    rvae.load_weights("model.pt")
-    rvae.eval()
+    ved.load_weights("ved_model.pt")
+    ved.eval()
 
-    return rvae, train_dataset
+    return ved, train_dataset
 
 
 def infer(model, x):
@@ -56,11 +53,11 @@ def infer(model, x):
         return model.encode(x)[0].squeeze()[-model.ndim :].tolist()
 
 
-def get_embeddings(rvae, train_dataset):
+def get_embeddings(ved, train_dataset):
     embeddings = []
     for idx in tqdm(range(len(train_dataset))):
         img = train_dataset[idx][0]
-        embeddings.append(infer(rvae, img))
+        embeddings.append(infer(ved, img))
 
     np.save("embeddings.npy", embeddings)
 
@@ -96,10 +93,6 @@ def _get_extent(points):
     return extent
 
 
-def get_h5s():
-    return sorted(glob.glob(os.path.join(BASE_PATH, "*_patch.h5")))
-
-
 def rescale_embeddings(embeddings):
     x_min, x_max = np.min(embeddings[:, 0]), np.max(embeddings[:, 0])
     y_min, y_max = np.min(embeddings[:, 1]), np.max(embeddings[:, 1])
@@ -110,7 +103,8 @@ def rescale_embeddings(embeddings):
 def project(volume):
     assert len(volume.shape) == 3
     # HWC
-    return volume[:, :, volume.shape[2] // 2]
+    return volume[volume.shape[0] // 2]
+    # return volume[:, :, volume.shape[2] // 2]
 
 def contrast(img):
     return (img - np.min(img)) / (np.max(img) - np.min(img))
@@ -247,8 +241,8 @@ def generate_all_figs():
 
 
 if __name__ == "__main__":
-    rvae,train_dataset = load()
-    # get_embeddings(rvae, train_dataset)
+    ved,train_dataset = load()
+    get_embeddings(ved, train_dataset)
 
     # plt.imshow(project(train_dataset[0][0].numpy()), cmap="gray")
     # plt.show()
@@ -258,9 +252,11 @@ if __name__ == "__main__":
     for i in range(len(embeddings)):
         # plot side by side
         fig, ax = plt.subplots(1, 2)
-        ax[0].imshow(project(train_dataset[i][0].numpy()), cmap="gray")
-    #     __import__('pdb').set_trace()
-        ax[1].imshow(project(recons(rvae, embeddings[i][0], embeddings[i][1])), cmap="gray")
+        image = train_dataset[i][0]
+        inferred = infer(ved, image)
+        print(inferred)
+        ax[0].imshow(contrast(project(image.numpy())), cmap="gray")
+        ax[1].imshow(contrast(project(recons(ved, inferred[0], inferred[1]))), cmap="gray")
         plt.show()
 
     plot(train_dataset, interactive=True)

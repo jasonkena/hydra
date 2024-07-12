@@ -14,23 +14,18 @@ from reloading import reloading
 
 # Add your custom dataset class here
 class VesicleDataset(Dataset):
-    def __init__(self, transforms):
-        base_path = "/data/bccv/dataset/xiaomeng/mossy_terminal/ves"
-        h5s = sorted(glob.glob(os.path.join(base_path, "*_patch.h5")))
-        vols = []
-        for h5 in h5s:
-            with h5py.File(h5, "r") as f:
-                vols.append(f["main"][:])
-        vols = np.concatenate(vols, axis=0)
-        self.vols = vols
+    def __init__(self, patch_file, transforms):
+        self.data = np.load(patch_file)
         self.transforms = transforms
+        # [N, H, W, C] -> [H, W, C]
+        self.data_dim = self.data.shape[1:]
 
     def __len__(self):
-        return self.vols.shape[0]
+        return self.data.shape[0]
 
     def __getitem__(self, idx):
-        img = self.vols[idx].astype(np.float32) / 255
-        img = torch.from_numpy(img).reshape(img.shape[0], img.shape[1])
+        img = self.data[idx].astype(np.float32) / 255
+        img = torch.from_numpy(img)
         img = self.transforms(img)
         return (img,)
 
@@ -57,36 +52,42 @@ def dataset_with_indices(cls):
     )
 
 
-def train():
+def train(enable_wandb=True):
     # Initialize VAE model
 
-    wandb.init(project="mossy-terminal")
-    data_dim = (11, 11)
-
-    rvae = pv.models.iVAE(
-        data_dim, latent_dim=2, invariances=["r", "t"], dx_prior=0.5, dy_prior=0.5
-    )  # rotation and translation invariance
+    if enable_wandb:
+        wandb.init(project="hydra")
 
     # Create a dataloader object
 
-    train_dataset = VesicleDataset(transforms=nn.Identity())
-    train_loader = DataLoader(
-        train_dataset, batch_size=256, shuffle=True, num_workers=32
+    train_dataset = VesicleDataset(
+        patch_file="/data/adhinart/hydra/patches.npy", transforms=nn.Identity()
     )
+    train_loader = DataLoader(
+        train_dataset, batch_size=16, shuffle=True, num_workers=32
+    )
+    rvae = pv.models.iVAE(
+        train_dataset.data_dim[:2],
+        extra_data_dim=train_dataset.data_dim[2],
+        # latent_dim=16,
+        latent_dim=2,
+        invariances=None,
+        # invariances=["r", "t"],
+        dx_prior=0.5,
+        dy_prior=0.5,
+    )  # rotation and translation invariance
     # Initialize SVI trainer
     trainer = pv.trainers.SVItrainer(rvae)
 
     # Train for 100 epochs
 
-    try:
-        for e in reloading(range(100)):
-            trainer.step(train_loader)
-            trainer.print_statistics()  # print running loss
+    for _ in range(100):
+    # for e in reloading(range(100)):
+        trainer.step(train_loader)
+        trainer.print_statistics()  # print running loss
+        if enable_wandb:
             wandb.log({"loss": trainer.loss_history["training_loss"][-1]})
-        rvae.save_weights("model")
-    except:
-        wandb.alert(title="Training failed")
-        __import__("pdb").set_trace()
+    rvae.save_weights("model")
 
 
 if __name__ == "__main__":
