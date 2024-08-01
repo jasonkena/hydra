@@ -30,6 +30,7 @@ from magicpickle import MagicPickle
 # dir which contains all h5 files, umap.npy, and embeddings.pt
 BASE_PATH = "/data/bccv/dataset/xiaomeng/mossy_terminal/ves"
 
+
 def load(patch_data):
     train_dataset = VesicleDataset(patch_data, transforms=normalize)
 
@@ -45,11 +46,13 @@ def load(patch_data):
 
     return rvae, train_dataset
 
+
 def set_weights(model, weights):
     # move weights to device of model
     model.load_state_dict(weights)
     model.eval()
     return model
+
 
 def infer(model, x):
     with torch.no_grad():
@@ -68,7 +71,6 @@ def get_embeddings(rvae, train_dataset):
         embeddings.append(infer(rvae, img))
     # np.save("embeddings.npy", embeddings)
     return np.array(embeddings)
-
 
 
 def recons(model, x, y):
@@ -125,11 +127,13 @@ def project(volume):
 def contrast(img):
     return (img - np.min(img)) / (np.max(img) - np.min(img))
 
+
 def read_images(train_dataset):
     images = []
     for vol in train_dataset:
         images.append(vol[0].numpy())
     return images
+
 
 def plot(model, images, embeddings, filter=None, interactive=True, std=False, bins=20):
     # interactive, whether to plot/activating onclick hook
@@ -187,11 +191,17 @@ def plot(model, images, embeddings, filter=None, interactive=True, std=False, bi
     # ax.set_aspect("equal")
     if not std:
         ax.hist2d(
-            embeddings[:, 0], embeddings[:, 1], bins=bins, range=[extent[:2], extent[2:]]
+            embeddings[:, 0],
+            embeddings[:, 1],
+            bins=bins,
+            range=[extent[:2], extent[2:]],
         )
     else:
         ax.hist2d(
-            embeddings[:, 2], embeddings[:, 3], bins=bins, range=[extent[:2], extent[2:]]
+            embeddings[:, 2],
+            embeddings[:, 3],
+            bins=bins,
+            range=[extent[:2], extent[2:]],
         )
     # plt.show()
 
@@ -247,7 +257,13 @@ def plot(model, images, embeddings, filter=None, interactive=True, std=False, bi
 
                 im.set_data(
                     np.concatenate(
-                        [contrast(images[idx]), contrast(recons(model, embeddings[idx, 0], embeddings[idx, 1]))], axis=1
+                        [
+                            contrast(images[idx]),
+                            contrast(
+                                recons(model, embeddings[idx, 0], embeddings[idx, 1])
+                            ),
+                        ],
+                        axis=1,
                     )
                 )
 
@@ -294,7 +310,8 @@ def generate_all_figs():
         plt.savefig(f"{terminal}.png")
 
 
-import dill as pickle # allow pickling of lambda functions
+import dill as pickle  # allow pickling of lambda functions
+
 # https://stackoverflow.com/a/78399538/10702372
 torch.serialization.register_package(0, lambda x: x.device.type, lambda x, _: x.cpu())
 

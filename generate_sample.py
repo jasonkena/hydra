@@ -84,8 +84,16 @@ def extract_patches(
                 image,
                 np.s_[
                     z : z + 1,
-                    center[0] - max_size // 2 - extra_pad : center[0] + max_size // 2 + extra_pad,
-                    center[1] - max_size // 2 - extra_pad : center[1] + max_size // 2 + extra_pad,
+                    center[0]
+                    - max_size // 2
+                    - extra_pad : center[0]
+                    + max_size // 2
+                    + extra_pad,
+                    center[1]
+                    - max_size // 2
+                    - extra_pad : center[1]
+                    + max_size // 2
+                    + extra_pad,
                 ],
                 mode="edge",
             )

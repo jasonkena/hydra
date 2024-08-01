@@ -4,6 +4,7 @@ matplotlib.use("TkAgg")
 
 import pyroved as pv
 from main_ved import VesicleDataset
+
 # from main import VesicleDataset, dataset_with_indices
 
 import torch
@@ -29,9 +30,7 @@ from tqdm import tqdm
 
 
 def load():
-    train_dataset = VesicleDataset(
-        patch_file="patches.npy", transforms=nn.Identity()
-    )
+    train_dataset = VesicleDataset(patch_file="patches.npy", transforms=nn.Identity())
     ved = pv.models.VED(
         input_dim=train_dataset.data_dim[:2],
         output_dim=train_dataset.data_dim[:2],
@@ -67,6 +66,8 @@ def recons(model, x, y):
     img = model.decode(coord).squeeze(0).numpy()
     # img = (img * 255).astype(np.uint8)
     return img
+
+
 # def recons(experiment, img):
 #     recons = experiment.model.generate(img.unsqueeze(0), labels=0)
 #     iio.imwrite(
@@ -100,14 +101,17 @@ def rescale_embeddings(embeddings):
     embeddings[:, 1] = (embeddings[:, 1] - y_min) / (y_max - y_min)
     return embeddings
 
+
 def project(volume):
     assert len(volume.shape) == 3
     # HWC
     return volume[volume.shape[0] // 2]
     # return volume[:, :, volume.shape[2] // 2]
 
+
 def contrast(img):
     return (img - np.min(img)) / (np.max(img) - np.min(img))
+
 
 def plot(train_dataset, filter=None, interactive=True):
     # interactive, whether to plot/activating onclick hook
@@ -150,9 +154,10 @@ def plot(train_dataset, filter=None, interactive=True):
     # get current axis
     ax = plt.gca()
     # ax.set_aspect("equal")
-    ax.hist2d(embeddings[:, 0], embeddings[:, 1], bins=100, range=[extent[:2], extent[2:]])
+    ax.hist2d(
+        embeddings[:, 0], embeddings[:, 1], bins=100, range=[extent[:2], extent[2:]]
+    )
     # plt.show()
-
 
     # mapper = umap.UMAP()
     #
@@ -167,7 +172,13 @@ def plot(train_dataset, filter=None, interactive=True):
     if interactive:
         model = load()[0]
         fig = ax.get_figure()
-        im = OffsetImage(np.concatenate([contrast(images[0]), contrast(project(recons(model, 0, 0)))], axis=1), zoom=5, cmap="gray")
+        im = OffsetImage(
+            np.concatenate(
+                [contrast(images[0]), contrast(project(recons(model, 0, 0)))], axis=1
+            ),
+            zoom=5,
+            cmap="gray",
+        )
         # im = OffsetImage(images[0], zoom=5, cmap="gray")
 
         kd = KDTree(embeddings)
@@ -195,7 +206,12 @@ def plot(train_dataset, filter=None, interactive=True):
                 print(dist, idx)
                 print(embeddings[idx])
 
-                im.set_data(np.concatenate([contrast(images[idx]), contrast(project(recons(model, x, y)))], axis=1))
+                im.set_data(
+                    np.concatenate(
+                        [contrast(images[idx]), contrast(project(recons(model, x, y)))],
+                        axis=1,
+                    )
+                )
 
                 w, h = fig.get_size_inches() * fig.dpi
                 ws = (event.x > w / 2.0) * -1 + (event.x <= w / 2.0)
@@ -241,7 +257,7 @@ def generate_all_figs():
 
 
 if __name__ == "__main__":
-    ved,train_dataset = load()
+    ved, train_dataset = load()
     get_embeddings(ved, train_dataset)
 
     # plt.imshow(project(train_dataset[0][0].numpy()), cmap="gray")
@@ -256,7 +272,9 @@ if __name__ == "__main__":
         inferred = infer(ved, image)
         print(inferred)
         ax[0].imshow(contrast(project(image.numpy())), cmap="gray")
-        ax[1].imshow(contrast(project(recons(ved, inferred[0], inferred[1]))), cmap="gray")
+        ax[1].imshow(
+            contrast(project(recons(ved, inferred[0], inferred[1]))), cmap="gray"
+        )
         plt.show()
 
     plot(train_dataset, interactive=True)

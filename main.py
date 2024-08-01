@@ -53,8 +53,10 @@ def dataset_with_indices(cls):
         },
     )
 
+
 def normalize(x):
     return (x - x.min()) / (x.max() - x.min() + 1e-6)
+
 
 def train(enable_wandb=True):
     # Initialize VAE model
@@ -86,7 +88,7 @@ def train(enable_wandb=True):
     # Train for 100 epochs
 
     for _ in range(100):
-    # for e in reloading(range(100)):
+        # for e in reloading(range(100)):
         trainer.step(train_loader)
         trainer.print_statistics()  # print running loss
         if enable_wandb:
