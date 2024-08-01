@@ -3,7 +3,7 @@ import matplotlib
 matplotlib.use("TkAgg")
 
 import pyroved as pv
-from main import VesicleDataset, dataset_with_indices
+from main import VesicleDataset, dataset_with_indices, normalize
 
 import torch
 import torch.nn as nn
@@ -25,35 +25,40 @@ from scipy.spatial import KDTree
 from matplotlib.offsetbox import OffsetImage, AnnotationBbox
 
 from tqdm import tqdm
+from magicpickle import MagicPickle
 
 # dir which contains all h5 files, umap.npy, and embeddings.pt
 BASE_PATH = "/data/bccv/dataset/xiaomeng/mossy_terminal/ves"
 
-
-def load():
-    train_dataset = VesicleDataset(
-        patch_file="patches.npy", transforms=nn.Identity()
-    )
+def load(patch_data):
+    train_dataset = VesicleDataset(patch_data, transforms=normalize)
 
     rvae = pv.models.iVAE(
-        train_dataset.data_dim[:2],
-        extra_data_dim=train_dataset.data_dim[2],
+        train_dataset.data_dim,
+        # extra_data_dim=train_dataset.data_dim[2],
         latent_dim=2,
+        invariances=None,
         # invariances=["r", "t"],
-        dx_prior=0.5,
-        dy_prior=0.5,
+        # dx_prior=0.5,
+        # dy_prior=0.5,
     )  # rotation and translation invariance
-
-    rvae.load_weights("model.pt")
-    rvae.eval()
 
     return rvae, train_dataset
 
+def set_weights(model, weights):
+    # move weights to device of model
+    model.load_state_dict(weights)
+    model.eval()
+    return model
 
 def infer(model, x):
     with torch.no_grad():
         # x: [11, 11]
-        return model.encode(x)[0].squeeze()[-model.ndim :].tolist()
+        mean, std = model.encode(x)
+        mean, std = mean.squeeze(), std.squeeze()
+
+        # [x mean, y mean, x std, y std]
+        return mean.tolist() + std.tolist()
 
 
 def get_embeddings(rvae, train_dataset):
@@ -61,8 +66,9 @@ def get_embeddings(rvae, train_dataset):
     for idx in tqdm(range(len(train_dataset))):
         img = train_dataset[idx][0]
         embeddings.append(infer(rvae, img))
+    # np.save("embeddings.npy", embeddings)
+    return np.array(embeddings)
 
-    np.save("embeddings.npy", embeddings)
 
 
 def recons(model, x, y):
@@ -70,6 +76,8 @@ def recons(model, x, y):
     img = model.decode(coord).squeeze(0).numpy()
     # img = (img * 255).astype(np.uint8)
     return img
+
+
 # def recons(experiment, img):
 #     recons = experiment.model.generate(img.unsqueeze(0), labels=0)
 #     iio.imwrite(
@@ -107,47 +115,68 @@ def rescale_embeddings(embeddings):
     embeddings[:, 1] = (embeddings[:, 1] - y_min) / (y_max - y_min)
     return embeddings
 
+
 def project(volume):
     assert len(volume.shape) == 3
     # HWC
     return volume[:, :, volume.shape[2] // 2]
 
+
 def contrast(img):
     return (img - np.min(img)) / (np.max(img) - np.min(img))
 
-def plot(train_dataset, filter=None, interactive=True):
+def read_images(train_dataset):
+    images = []
+    for vol in train_dataset:
+        images.append(vol[0].numpy())
+    return images
+
+def plot(model, images, embeddings, filter=None, interactive=True, std=False, bins=20):
     # interactive, whether to plot/activating onclick hook
 
-    images = []
-
-    for vol in train_dataset:
-        images.append(project(vol[0].numpy()))
-
-    embeddings = np.load("embeddings.npy")
+    # embeddings = np.load("embeddings.npy")
+    # __import__('pdb').set_trace()
+    assert embeddings.shape[1] == 4
     # embeddings = rescale_embeddings(
     #     embeddings
     # )  # hack because Datashader raises division by zero otherwise
     # plt.hist2d(embeddings[:, 0], embeddings[:, 1], bins=100)
     # plt.show()
 
-    x1, x2, y1, y2 = (
-        np.argmin(embeddings[:, 0]),
-        np.argmax(embeddings[:, 0]),
-        np.argmin(embeddings[:, 1]),
-        np.argmax(embeddings[:, 1]),
-    )
+    if not std:
+        x1, x2, y1, y2 = (
+            np.argmin(embeddings[:, 0]),
+            np.argmax(embeddings[:, 0]),
+            np.argmin(embeddings[:, 1]),
+            np.argmax(embeddings[:, 1]),
+        )
+    else:
+        x1, x2, y1, y2 = (
+            np.argmin(embeddings[:, 2]),
+            np.argmax(embeddings[:, 2]),
+            np.argmin(embeddings[:, 3]),
+            np.argmax(embeddings[:, 3]),
+        )
 
     # # NOTE: dumb hack to bypass broken datashader internals which raises shape error when labels is all one class?
     # # see https://github.com/holoviz/datashader/issues/1230
     # labels[x1] = 0
     # labels[x2] = 1
 
-    extent = [
-        embeddings[x1, 0],
-        embeddings[x2, 0],
-        embeddings[y1, 1],
-        embeddings[y2, 1],
-    ]
+    if not std:
+        extent = [
+            embeddings[x1, 0],
+            embeddings[x2, 0],
+            embeddings[y1, 1],
+            embeddings[y2, 1],
+        ]
+    else:
+        extent = [
+            embeddings[x1, 2],
+            embeddings[x2, 2],
+            embeddings[y1, 3],
+            embeddings[y2, 3],
+        ]
 
     print(f"extent: {extent}")
     # extent = _get_extent(embeddings)
@@ -156,9 +185,15 @@ def plot(train_dataset, filter=None, interactive=True):
     # get current axis
     ax = plt.gca()
     # ax.set_aspect("equal")
-    ax.hist2d(embeddings[:, 0], embeddings[:, 1], bins=100, range=[extent[:2], extent[2:]])
+    if not std:
+        ax.hist2d(
+            embeddings[:, 0], embeddings[:, 1], bins=bins, range=[extent[:2], extent[2:]]
+        )
+    else:
+        ax.hist2d(
+            embeddings[:, 2], embeddings[:, 3], bins=bins, range=[extent[:2], extent[2:]]
+        )
     # plt.show()
-
 
     # mapper = umap.UMAP()
     #
@@ -171,12 +206,20 @@ def plot(train_dataset, filter=None, interactive=True):
     # )
 
     if interactive:
-        model = load()[0]
         fig = ax.get_figure()
-        im = OffsetImage(np.concatenate([contrast(images[0]), contrast(project(recons(model, 0, 0)))], axis=1), zoom=5, cmap="gray")
+        im = OffsetImage(
+            np.concatenate(
+                [contrast(images[0]), contrast(recons(model, 0, 0))], axis=1
+            ),
+            zoom=5,
+            cmap="gray",
+        )
         # im = OffsetImage(images[0], zoom=5, cmap="gray")
 
-        kd = KDTree(embeddings)
+        if not std:
+            kd = KDTree(embeddings[:, :2])
+        else:
+            kd = KDTree(embeddings[:, 2:])
         xybox = (50.0, 50.0)
         ab = AnnotationBbox(
             im,
@@ -198,10 +241,15 @@ def plot(train_dataset, filter=None, interactive=True):
                 print(f"real_x: {x}, real_y: {y}")
 
                 dist, idx = kd.query([x, y])
+
                 print(dist, idx)
                 print(embeddings[idx])
 
-                im.set_data(np.concatenate([contrast(images[idx]), contrast(project(recons(model, x, y)))], axis=1))
+                im.set_data(
+                    np.concatenate(
+                        [contrast(images[idx]), contrast(recons(model, embeddings[idx, 0], embeddings[idx, 1]))], axis=1
+                    )
+                )
 
                 w, h = fig.get_size_inches() * fig.dpi
                 ws = (event.x > w / 2.0) * -1 + (event.x <= w / 2.0)
@@ -246,27 +294,43 @@ def generate_all_figs():
         plt.savefig(f"{terminal}.png")
 
 
+import dill as pickle # allow pickling of lambda functions
+# https://stackoverflow.com/a/78399538/10702372
+torch.serialization.register_package(0, lambda x: x.device.type, lambda x, _: x.cpu())
+
 if __name__ == "__main__":
-    rvae,train_dataset = load()
-    # get_embeddings(rvae, train_dataset)
+    with MagicPickle("think-jason") as mp:
+        if mp.is_remote:
+            patch_data = np.load("patches.npy")
+            weights = torch.load("model.pt")
+            rvae, train_dataset = load(patch_data)
+            rvae = set_weights(rvae, weights)
+            images = read_images(train_dataset)
+            embeddings = get_embeddings(rvae, train_dataset)
+            # move weights to cpu
+            mp.save((weights, patch_data, images, embeddings))
+        else:
+            weights, patch_data, images, embeddings = mp.load()
+            rvae, _ = load(patch_data)
+            rvae = set_weights(rvae, weights)
+            rvae.manifold2d(d=12, cmap="gray")
 
-    # plt.imshow(project(train_dataset[0][0].numpy()), cmap="gray")
-    # plt.show()
-    embeddings = np.load("embeddings.npy")
-    # plt.scatter(embeddings[:, 0], embeddings[:, 1])
-    # plt.show()
-    for i in range(len(embeddings)):
-        # plot side by side
-        fig, ax = plt.subplots(1, 2)
-        ax[0].imshow(project(train_dataset[i][0].numpy()), cmap="gray")
-    #     __import__('pdb').set_trace()
-        ax[1].imshow(project(recons(rvae, embeddings[i][0], embeddings[i][1])), cmap="gray")
-        plt.show()
+            plot(rvae, images, embeddings, interactive=True, std=False)
+            plot(rvae, images, embeddings, interactive=True, std=True)
 
-    plot(train_dataset, interactive=True)
+        # plt.imshow(project(train_dataset[0][0].numpy()), cmap="gray")
+        # plt.show()
+        # plt.scatter(embeddings[:, 0], embeddings[:, 1])
+        # plt.show()
+        # for i in range(len(embeddings)):
+        #     # plot side by side
+        #     fig, ax = plt.subplots(1, 2)
+        #     ax[0].imshow(train_dataset[i][0].numpy(), cmap="gray")
+        # #     __import__('pdb').set_trace()
+        #     ax[1].imshow(recons(rvae, embeddings[i][0], embeddings[i][1]), cmap="gray")
+        #     plt.show()
+        #  setenv LD_LIBRARY_PATH LD_LIBRARY_PATH\:/data/adhinart/.conda/envs/vesicle/lib/
+        # plot(interactive=False)
+        # plt.show()
 
-    #  setenv LD_LIBRARY_PATH LD_LIBRARY_PATH\:/data/adhinart/.conda/envs/vesicle/lib/
-    # plot(interactive=False)
-    # plt.show()
-
-    # generate_all_figs()
+        # generate_all_figs()

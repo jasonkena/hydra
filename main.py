@@ -7,6 +7,7 @@ import pyroved as pv
 import torch
 import torch.nn as nn
 from torch.utils.data import Dataset, DataLoader
+from torchvision import transforms as T
 
 import wandb
 from reloading import reloading
@@ -14,10 +15,10 @@ from reloading import reloading
 
 # Add your custom dataset class here
 class VesicleDataset(Dataset):
-    def __init__(self, patch_file, transforms):
-        self.data = np.load(patch_file)
+    def __init__(self, patch_data, transforms):
+        self.data = patch_data
         self.transforms = transforms
-        # [N, H, W, C] -> [H, W, C]
+        # [N, H, W] -> [H, W]
         self.data_dim = self.data.shape[1:]
 
     def __len__(self):
@@ -25,6 +26,7 @@ class VesicleDataset(Dataset):
 
     def __getitem__(self, idx):
         img = self.data[idx].astype(np.float32) / 255
+        # [H, W]
         img = torch.from_numpy(img)
         img = self.transforms(img)
         return (img,)
@@ -51,6 +53,8 @@ def dataset_with_indices(cls):
         },
     )
 
+def normalize(x):
+    return (x - x.min()) / (x.max() - x.min() + 1e-6)
 
 def train(enable_wandb=True):
     # Initialize VAE model
@@ -61,20 +65,20 @@ def train(enable_wandb=True):
     # Create a dataloader object
 
     train_dataset = VesicleDataset(
-        patch_file="/data/adhinart/hydra/patches.npy", transforms=nn.Identity()
+        np.load("data/adhinart/hydra/patches.npy"), transforms=normalize
     )
     train_loader = DataLoader(
-        train_dataset, batch_size=16, shuffle=True, num_workers=32
+        train_dataset, batch_size=32, shuffle=True, num_workers=32
     )
     rvae = pv.models.iVAE(
-        train_dataset.data_dim[:2],
-        extra_data_dim=train_dataset.data_dim[2],
+        train_dataset.data_dim,
+        # extra_data_dim=train_dataset.data_dim[2],
         # latent_dim=16,
         latent_dim=2,
         invariances=None,
         # invariances=["r", "t"],
-        dx_prior=0.5,
-        dy_prior=0.5,
+        # dx_prior=0.5,
+        # dy_prior=0.5,
     )  # rotation and translation invariance
     # Initialize SVI trainer
     trainer = pv.trainers.SVItrainer(rvae)
