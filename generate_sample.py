@@ -22,6 +22,7 @@ def main():
     base_path = "/data/projects/weilab/dataset/hydra/small_vesicle"
     files = sorted(glob.glob(os.path.join(base_path, "*.h5")))
     files = [x for x in files if "vol3" not in x]  # skip test volume
+    # files = [x for x in files if "vol4" not in x]  # skip test volume
 
     images = [x for x in files if "_im" in x]
     labels = [x for x in files if "_vesicle_small" in x]
@@ -42,6 +43,7 @@ def main():
     # [N, H, W]
     patches = np.stack(patches, axis=0)
     np.save("patches.npy", patches)
+    print(patches.shape)
 
     return patches
 
