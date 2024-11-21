@@ -188,12 +188,13 @@ def plot(model, images, embeddings, filter=None, interactive=True, std=False, bi
 
     # get current axis
     ax = plt.gca()
-    # ax.set_aspect("equal")
+    ax.set_aspect("equal")
     if not std:
         ax.hist2d(
             embeddings[:, 0],
             embeddings[:, 1],
             bins=bins,
+            # range=[[-1.5, 1.5], [-1.5, 1.5]],
             range=[extent[:2], extent[2:]],
         )
     else:

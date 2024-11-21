@@ -1,9 +1,11 @@
+import re
 import numpy as np
 import random
 import os
 import glob
 import h5py
 import math
+import imageio
 
 # from scipy import ndimage
 # import skimage
@@ -56,9 +58,9 @@ def extract_patches(
 
     Parameters
     ----------
-    image : H x W uint8
+    image : D x H x W uint8
         [TODO:description]
-    label : H x W bool
+    label : D x H x W bool
         [TODO:description]
     patch_size : (h, w) int
     connectivity : for cc3d
@@ -132,7 +134,57 @@ def debug():
             "label", data=cc3d.connected_components(label, connectivity=6)
         )
 
+def new_main():
+    # /data/adhinart/Downloads/NET_11_SV_241001.vsseg_export_s0199_Y0_X2.tif
+    tifs = sorted(glob.glob("/data/adhinart/Downloads/*.tif"))
+    # /data/adhinart/Downloads/hydra_export_s0199_Y0_X0.png
+    pngs = sorted(glob.glob("/data/adhinart/Downloads/*.png"))
+
+    tifs_dict = {}
+    pngs_dict = {}
+
+    pattern = r"s\d+_Y\d+_X\d+"
+    for tif in tifs:
+        code = re.search(pattern, tif).group()
+        assert code not in tifs_dict
+        tifs_dict[code] = tif
+    for png in pngs:
+        code = re.search(pattern, png).group()
+        assert code not in pngs_dict
+        pngs_dict[code] = png
+    intersection = set(tifs_dict.keys()) & set(pngs_dict.keys())
+    result_dict = {k: {"tif": tifs_dict[k], "png": pngs_dict[k]} for k in intersection}
+    print(f"{len(result_dict)} tif-png pairs found")
+
+    patch_size = (11, 11)
+    patches = []
+    for k, v in tqdm(result_dict.items()):
+        # add new 0 axis
+        label = imageio.imread(v["tif"])
+        image = imageio.imread(v["png"])
+        label = np.expand_dims(label, axis=0)
+        image = np.expand_dims(image, axis=0)
+
+        patches.extend(extract_patches(image, label, patch_size))
+    patches = np.stack(patches, axis=0)
+    np.save("patches.npy", patches)
+    print(patches.shape)
+    
+    return patches
+
+def new_new_main():
+    # based on already preprocessed file
+    file = h5py.File("/data/projects/weilab/dataset/hydra/results/vesicle_small_KR4_30-8-8_patch.h5")
+    vol = file["key0"][:]
+    assert vol.shape[-2:] == (11, 11)
+    assert vol.shape[1] == 1
+    patches = vol.squeeze(1)
+    print(patches.shape)
+    np.save("patches.npy", patches)
+
 
 if __name__ == "__main__":
-    main()
+    new_new_main()
+    # new_main()
+    # main()
     # debug()

@@ -67,7 +67,7 @@ def train(enable_wandb=True):
     # Create a dataloader object
 
     train_dataset = VesicleDataset(
-        np.load("data/adhinart/hydra/patches.npy"), transforms=normalize
+        np.load("/data/adhinart/hydra/patches.npy"), transforms=normalize
     )
     train_loader = DataLoader(
         train_dataset, batch_size=32, shuffle=True, num_workers=32
