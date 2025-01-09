@@ -27,8 +27,13 @@ from matplotlib.offsetbox import OffsetImage, AnnotationBbox
 from tqdm import tqdm
 from magicpickle import MagicPickle
 
+from typing import Union
+from pyroved.utils import generate_latent_grid, plot_img_grid, plot_spect_grid
+import pyro.distributions as dist
+
 # dir which contains all h5 files, umap.npy, and embeddings.pt
 BASE_PATH = "/data/bccv/dataset/xiaomeng/mossy_terminal/ves"
+LATENT_DIM = 2
 
 
 def load(patch_data):
@@ -37,11 +42,11 @@ def load(patch_data):
     rvae = pv.models.iVAE(
         train_dataset.data_dim,
         # extra_data_dim=train_dataset.data_dim[2],
-        latent_dim=2,
-        invariances=None,
-        # invariances=["r", "t"],
-        # dx_prior=0.5,
-        # dy_prior=0.5,
+        latent_dim=LATENT_DIM,
+        # invariances=None,
+        invariances=["r", "t"],
+        dx_prior=0.5,
+        dy_prior=0.5,
     )  # rotation and translation invariance
 
     return rvae, train_dataset
@@ -57,8 +62,11 @@ def set_weights(model, weights):
 def infer(model, x):
     with torch.no_grad():
         # x: [11, 11]
+        # https://github.com/ziatdinovmax/pyroVED/blob/7807ffb1cb415b3cc76c1e02d52465a8ae0eeae4/pyroved/models/ivae.py#L237
+        # last 2 dims as latent dimensions
         mean, std = model.encode(x)
         mean, std = mean.squeeze(), std.squeeze()
+        mean, std = mean[-LATENT_DIM:], std[-LATENT_DIM:]
 
         # [x mean, y mean, x std, y std]
         return mean.tolist() + std.tolist()
@@ -311,6 +319,72 @@ def generate_all_figs():
         plt.savefig(f"{terminal}.png")
 
 
+        
+        
+
+def custom_generate_latent_grid(d: int, **kwargs) -> torch.Tensor:
+    """
+    Generates a grid of latent space coordinates
+    """
+    if isinstance(d, int):
+        d = [d, d]
+    z_coord = kwargs.get("z_coord")
+    if z_coord:
+        z1, z2, z3, z4 = z_coord
+        """ WRONG version
+        grid_x = torch.linspace(z2, z1, d[0])
+        grid_y = torch.linspace(z3, z4, d[1])
+        """
+        grid_x = torch.linspace(z1, z2, d[0])
+        grid_y = torch.linspace(z4, z3, d[1])
+    else:
+        """ WRONG version
+        grid_x = dist.Normal(0, 1).icdf(torch.linspace(0.95, 0.05, d[0]))
+        grid_y = dist.Normal(0, 1).icdf(torch.linspace(0.05, 0.95, d[1]))
+        """
+        grid_x = dist.Normal(0, 1).icdf(torch.linspace(0.05, 0.95, d[0]))
+        grid_y = dist.Normal(0, 1).icdf(torch.linspace(0.95, 0.05, d[1]))
+    z = []
+    """ WRONG version
+    for xi in grid_x:
+        for yi in grid_y:
+    """
+    for yi in grid_y:
+        for xi in grid_x:
+            z.append(torch.tensor([xi, yi]).float().unsqueeze(0))
+    return torch.cat(z), (grid_x, grid_y)
+
+def custom_manifold2d(self, d: int,
+               y: torch.Tensor = None,
+               plot: bool = True,
+               **kwargs: Union[str, int, float]) -> torch.Tensor:
+    """
+    custom manifold with custom generate_latent_grid
+    """
+    z, (grid_x, grid_y) = custom_generate_latent_grid(d, **kwargs)
+
+    z = [z]
+    if self.c_dim > 0:
+        if y is None:
+            raise ValueError("To generate a manifold pass a conditional vector y") 
+        y = y.unsqueeze(1) if 0 < y.ndim < 2 else y
+        z = z + [y.expand(z[0].shape[0], *y.shape[1:])]
+    loc = self.decode(*z, **kwargs)
+    if plot:
+        if self.ndim == 2:
+            plot_img_grid(
+                loc, d,
+                extent=[grid_x.min(), grid_x.max(), grid_y.min(), grid_y.max()],
+                **kwargs)
+        elif self.ndim == 1:
+            plot_spect_grid(loc, d, **kwargs)
+    return loc
+
+def plot_1d(embeddings, vesicle_type_index):
+    # plot 1D histogram of embeddings[:, vesicle_type_index]
+    plt.hist(embeddings[:, vesicle_type_index], bins=20)
+    plt.show()
+
 import dill as pickle  # allow pickling of lambda functions
 
 # https://stackoverflow.com/a/78399538/10702372
@@ -331,10 +405,16 @@ if __name__ == "__main__":
             weights, patch_data, images, embeddings = mp.load()
             rvae, _ = load(patch_data)
             rvae = set_weights(rvae, weights)
-            rvae.manifold2d(d=12, cmap="gray")
+            custom_manifold2d(rvae, d=12, cmap="gray")
 
             plot(rvae, images, embeddings, interactive=True, std=False)
-            plot(rvae, images, embeddings, interactive=True, std=True)
+            # plot(rvae, images, embeddings, interactive=True, std=True)
+
+            
+            # since horizontal axis (idx 0) differentiates vesicle type
+            VESICLE_TYPE_INDEX = 0
+            print(f"VESICLE_TYPE_INDEX: {VESICLE_TYPE_INDEX}, needs to be verified after every train")
+            plot_1d(embeddings, VESICLE_TYPE_INDEX)
 
         # plt.imshow(project(train_dataset[0][0].numpy()), cmap="gray")
         # plt.show()

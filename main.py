@@ -77,10 +77,10 @@ def train(enable_wandb=True):
         # extra_data_dim=train_dataset.data_dim[2],
         # latent_dim=16,
         latent_dim=2,
-        invariances=None,
-        # invariances=["r", "t"],
-        # dx_prior=0.5,
-        # dy_prior=0.5,
+        # invariances=None,
+        invariances=["r", "t"],
+        dx_prior=0.5,
+        dy_prior=0.5,
     )  # rotation and translation invariance
     # Initialize SVI trainer
     trainer = pv.trainers.SVItrainer(rvae)

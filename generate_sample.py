@@ -182,9 +182,26 @@ def new_new_main():
     print(patches.shape)
     np.save("patches.npy", patches)
 
+def new_new_new_main():
+    # /data/projects/weilab/dataset/hydra/results/vesicle_small_*_30-8-8_patch.h5
+    files = sorted(glob.glob("/data/projects/weilab/dataset/hydra/results/vesicle_small_*_30-8-8_patch.h5"))
+    print(f"Found {len(files)} files")
+    patches = []
+    for file in files:
+        file = h5py.File(file, "r")
+        vol = file["key0"][:]
+        assert vol.shape[-2:] == (11, 11)
+        assert vol.shape[1] == 1
+        patches.extend(vol.squeeze(1))
+    patches = [x for x in patches if np.sum(x) > 0] # not all 0
+    patches = np.stack(patches, axis=0)
+    print(patches.shape)
+    np.save("patches.npy", patches)
+
 
 if __name__ == "__main__":
-    new_new_main()
+    new_new_new_main()
+    # new_new_main()
     # new_main()
     # main()
     # debug()
