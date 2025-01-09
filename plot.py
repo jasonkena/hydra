@@ -393,16 +393,17 @@ torch.serialization.register_package(0, lambda x: x.device.type, lambda x, _: x.
 if __name__ == "__main__":
     with MagicPickle("think-jason") as mp:
         if mp.is_remote:
-            patch_data = np.load("patches.npy")
+            patch_data = np.load("patches.npz")["patches"]
+            patch_ids = np.load("patches.npz")["ids"]
             weights = torch.load("model.pt")
             rvae, train_dataset = load(patch_data)
             rvae = set_weights(rvae, weights)
             images = read_images(train_dataset)
             embeddings = get_embeddings(rvae, train_dataset)
             # move weights to cpu
-            mp.save((weights, patch_data, images, embeddings))
+            mp.save((weights, patch_data, images, embeddings, patch_ids))
         else:
-            weights, patch_data, images, embeddings = mp.load()
+            weights, patch_data, images, embeddings, patch_ids = mp.load()
             rvae, _ = load(patch_data)
             rvae = set_weights(rvae, weights)
             custom_manifold2d(rvae, d=12, cmap="gray")
@@ -415,6 +416,8 @@ if __name__ == "__main__":
             VESICLE_TYPE_INDEX = 0
             print(f"VESICLE_TYPE_INDEX: {VESICLE_TYPE_INDEX}, needs to be verified after every train")
             plot_1d(embeddings, VESICLE_TYPE_INDEX)
+
+            np.savez("vesicle_types.npz", embeddings=embeddings[:, VESICLE_TYPE_INDEX], ids=patch_ids)
 
         # plt.imshow(project(train_dataset[0][0].numpy()), cmap="gray")
         # plt.show()
