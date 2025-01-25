@@ -1,4 +1,6 @@
 import matplotlib
+from sklearn.mixture import GaussianMixture
+from matplotlib.patches import Ellipse
 
 matplotlib.use("TkAgg")
 
@@ -146,14 +148,7 @@ def read_images(train_dataset):
 def plot(model, images, embeddings, filter=None, interactive=True, std=False, bins=20):
     # interactive, whether to plot/activating onclick hook
 
-    # embeddings = np.load("embeddings.npy")
-    # __import__('pdb').set_trace()
     assert embeddings.shape[1] == 4
-    # embeddings = rescale_embeddings(
-    #     embeddings
-    # )  # hack because Datashader raises division by zero otherwise
-    # plt.hist2d(embeddings[:, 0], embeddings[:, 1], bins=100)
-    # plt.show()
 
     if not std:
         x1, x2, y1, y2 = (
@@ -191,8 +186,7 @@ def plot(model, images, embeddings, filter=None, interactive=True, std=False, bi
         ]
 
     print(f"extent: {extent}")
-    # extent = _get_extent(embeddings)
-    # fig_size = (800, 800)
+
 
     # get current axis
     ax = plt.gca()
@@ -212,17 +206,25 @@ def plot(model, images, embeddings, filter=None, interactive=True, std=False, bi
             bins=bins,
             range=[extent[:2], extent[2:]],
         )
-    # plt.show()
 
-    # mapper = umap.UMAP()
-    #
-    # ax = umap.plot.points(
-    #     mapper,
-    #     points=embeddings,
-    #     labels=labels,
-    #     color_key_cmap="cool",
-    #     subset_points=subset_points,
-    # )
+    # fit gaussian mixture model
+    gmm = GaussianMixture(n_components=2, random_state=0)
+    if not std:
+        gmm.fit(embeddings[:, :2])
+    else:
+        gmm.fit(embeddings[:, 2:])
+
+    # Overlay ellipses for each Gaussian component
+    means = gmm.means_
+    covariances = gmm.covariances_
+    for mean, covariance in zip(means, covariances):
+        eigenvalues, eigenvectors = np.linalg.eigh(covariance)
+        # Get the angle of the ellipse
+        angle = np.arctan2(*eigenvectors[:, 0][::-1])
+        # Width and height are 2 standard deviations
+        width, height = 2 * np.sqrt(eigenvalues)
+        ellipse = Ellipse(mean, width, height, angle=np.degrees(angle), edgecolor='red', facecolor='none', lw=2)
+        ax.add_patch(ellipse)
 
     if interactive:
         fig = ax.get_figure()
@@ -292,19 +294,6 @@ def plot(model, images, embeddings, filter=None, interactive=True, std=False, bi
         fig.canvas.mpl_connect("button_press_event", onclick)
         plt.show()
 
-
-# recons(experiment, test_img)
-
-# test_img = iio.imread("../white.png").astype(np.float32) / 256
-# test_img = torch.from_numpy(test_img).reshape(1, test_img.shape[0], test_img.shape[1])
-#
-# test_img = transforms.Resize((16,16))(test_img)
-#
-# experiment, data = load()
-# get_embeddings(experiment, data)
-
-# tsne()
-# get_umap()
 
 
 def generate_all_figs():
