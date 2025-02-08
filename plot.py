@@ -1,6 +1,4 @@
 import matplotlib
-from sklearn.mixture import GaussianMixture
-from matplotlib.patches import Ellipse
 
 matplotlib.use("TkAgg")
 
@@ -32,6 +30,8 @@ from magicpickle import MagicPickle
 from typing import Union
 from pyroved.utils import generate_latent_grid, plot_img_grid, plot_spect_grid
 import pyro.distributions as dist
+
+from hdbscan import flat
 
 # dir which contains all h5 files, umap.npy, and embeddings.pt
 BASE_PATH = "/data/bccv/dataset/xiaomeng/mossy_terminal/ves"
@@ -98,6 +98,14 @@ def recons(model, x, y):
 #
 #     return recons
 
+def get_clustering(data):
+    clusterer = flat.HDBSCAN_flat(data, n_clusters = 2, min_cluster_size = 200, min_samples=1)
+    memberships = flat.all_points_membership_vectors_flat(clusterer)
+    membership_labels = np.argmax(memberships, axis=1)
+    # NOTE: this below also classifies things as noise
+    # labels, prob = clusterer.labels_, clusterer.probabilities_
+
+    return membership_labels
 
 def _get_extent(points):
     """Compute bounds on a space with appropriate padding"""
@@ -206,25 +214,21 @@ def plot(model, images, embeddings, filter=None, interactive=True, std=False, bi
             bins=bins,
             range=[extent[:2], extent[2:]],
         )
+    plt.show()
 
-    # fit gaussian mixture model
-    gmm = GaussianMixture(n_components=2, random_state=0)
-    if not std:
-        gmm.fit(embeddings[:, :2])
-    else:
-        gmm.fit(embeddings[:, 2:])
+    data = embeddings[:, :2] if not std else embeddings[:, 2:]
+    # NOTE: start of 3D histogram
+    H, xedges, yedges = np.histogram2d(data[:, 0], data[:, 1], bins=bins)
+    X, Y = np.meshgrid((xedges[1:] + xedges[:-1]) / 2, (yedges[1:] + yedges[:-1]) / 2)
+    fig3, ax3 = plt.subplots(subplot_kw={"projection": "3d"})
+    ax3.plot_surface(X, Y, H, cmap="viridis")
+    plt.show()
 
-    # Overlay ellipses for each Gaussian component
-    means = gmm.means_
-    covariances = gmm.covariances_
-    for mean, covariance in zip(means, covariances):
-        eigenvalues, eigenvectors = np.linalg.eigh(covariance)
-        # Get the angle of the ellipse
-        angle = np.arctan2(*eigenvectors[:, 0][::-1])
-        # Width and height are 2 standard deviations
-        width, height = 2 * np.sqrt(eigenvalues)
-        ellipse = Ellipse(mean, width, height, angle=np.degrees(angle), edgecolor='red', facecolor='none', lw=2)
-        ax.add_patch(ellipse)
+    # end of 3D histogram
+
+    labels = get_clustering(data)
+    
+    plt.scatter(data[labels>=0, 0], data[labels>=0, 1], c=labels[labels>=0])
 
     if interactive:
         fig = ax.get_figure()
@@ -293,6 +297,7 @@ def plot(model, images, embeddings, filter=None, interactive=True, std=False, bi
 
         fig.canvas.mpl_connect("button_press_event", onclick)
         plt.show()
+    return labels
 
 
 
@@ -309,8 +314,6 @@ def generate_all_figs():
 
 
         
-        
-
 def custom_generate_latent_grid(d: int, **kwargs) -> torch.Tensor:
     """
     Generates a grid of latent space coordinates
@@ -397,16 +400,11 @@ if __name__ == "__main__":
             rvae = set_weights(rvae, weights)
             custom_manifold2d(rvae, d=12, cmap="gray")
 
-            plot(rvae, images, embeddings, interactive=True, std=False)
+            labels = plot(rvae, images, embeddings, interactive=True, std=False)
             # plot(rvae, images, embeddings, interactive=True, std=True)
 
-            
             # since horizontal axis (idx 0) differentiates vesicle type
-            VESICLE_TYPE_INDEX = 0
-            print(f"VESICLE_TYPE_INDEX: {VESICLE_TYPE_INDEX}, needs to be verified after every train")
-            plot_1d(embeddings, VESICLE_TYPE_INDEX)
-
-            np.savez("vesicle_types.npz", embeddings=embeddings[:, VESICLE_TYPE_INDEX], ids=patch_ids)
+            np.savez("vesicle_types.npz", labels=labels, ids=patch_ids)
 
         # plt.imshow(project(train_dataset[0][0].numpy()), cmap="gray")
         # plt.show()
