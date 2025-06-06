@@ -1,6 +1,4 @@
 import matplotlib
-from sklearn.mixture import GaussianMixture
-from matplotlib.patches import Ellipse
 
 matplotlib.use("TkAgg")
 
@@ -21,7 +19,6 @@ import matplotlib.pyplot as plt
 
 import os
 import glob
-import h5py
 
 from scipy.spatial import KDTree
 from matplotlib.offsetbox import OffsetImage, AnnotationBbox
@@ -33,8 +30,8 @@ from typing import Union
 from pyroved.utils import generate_latent_grid, plot_img_grid, plot_spect_grid
 import pyro.distributions as dist
 
-# dir which contains all h5 files, umap.npy, and embeddings.pt
-BASE_PATH = "/data/bccv/dataset/xiaomeng/mossy_terminal/ves"
+from hdbscan import flat
+
 LATENT_DIM = 2
 
 
@@ -90,14 +87,14 @@ def recons(model, x, y):
     return img
 
 
-# def recons(experiment, img):
-#     recons = experiment.model.generate(img.unsqueeze(0), labels=0)
-#     iio.imwrite(
-#         "recons.png", (recons * 256).detach().numpy().reshape(16, 16).astype(np.uint8)
-#     )
-#
-#     return recons
+def get_clustering(data):
+    clusterer = flat.HDBSCAN_flat(data, n_clusters = 2, min_cluster_size = 200, min_samples=1)
+    memberships = flat.all_points_membership_vectors_flat(clusterer)
+    membership_labels = np.argmax(memberships, axis=1)
+    # NOTE: this below also classifies things as noise
+    # labels, prob = clusterer.labels_, clusterer.probabilities_
 
+    return membership_labels
 
 def _get_extent(points):
     """Compute bounds on a space with appropriate padding"""
@@ -116,23 +113,6 @@ def _get_extent(points):
     return extent
 
 
-def get_h5s():
-    return sorted(glob.glob(os.path.join(BASE_PATH, "*_patch.h5")))
-
-
-def rescale_embeddings(embeddings):
-    x_min, x_max = np.min(embeddings[:, 0]), np.max(embeddings[:, 0])
-    y_min, y_max = np.min(embeddings[:, 1]), np.max(embeddings[:, 1])
-    embeddings[:, 0] = (embeddings[:, 0] - x_min) / (x_max - x_min)
-    embeddings[:, 1] = (embeddings[:, 1] - y_min) / (y_max - y_min)
-    return embeddings
-
-
-def project(volume):
-    assert len(volume.shape) == 3
-    # HWC
-    return volume[:, :, volume.shape[2] // 2]
-
 
 def contrast(img):
     return (img - np.min(img)) / (np.max(img) - np.min(img))
@@ -145,7 +125,7 @@ def read_images(train_dataset):
     return images
 
 
-def plot(model, images, embeddings, filter=None, interactive=True, std=False, bins=20):
+def plot(model, images, embeddings, bounds=None, filter=None, interactive=True, std=False, bins=20):
     # interactive, whether to plot/activating onclick hook
 
     assert embeddings.shape[1] == 4
@@ -184,6 +164,8 @@ def plot(model, images, embeddings, filter=None, interactive=True, std=False, bi
             embeddings[y1, 3],
             embeddings[y2, 3],
         ]
+    if bounds is not None:
+        extent = bounds
 
     print(f"extent: {extent}")
 
@@ -206,27 +188,8 @@ def plot(model, images, embeddings, filter=None, interactive=True, std=False, bi
             bins=bins,
             range=[extent[:2], extent[2:]],
         )
-
-    # fit gaussian mixture model
-    gmm = GaussianMixture(n_components=2, random_state=0)
-    if not std:
-        gmm.fit(embeddings[:, :2])
-    else:
-        gmm.fit(embeddings[:, 2:])
-
-    # Overlay ellipses for each Gaussian component
-    means = gmm.means_
-    covariances = gmm.covariances_
-    for mean, covariance in zip(means, covariances):
-        eigenvalues, eigenvectors = np.linalg.eigh(covariance)
-        # Get the angle of the ellipse
-        angle = np.arctan2(*eigenvectors[:, 0][::-1])
-        # Width and height are 2 standard deviations
-        width, height = 2 * np.sqrt(eigenvalues)
-        ellipse = Ellipse(mean, width, height, angle=np.degrees(angle), edgecolor='red', facecolor='none', lw=2)
-        ax.add_patch(ellipse)
-
     if interactive:
+        print("interactive")
         fig = ax.get_figure()
         im = OffsetImage(
             np.concatenate(
@@ -292,24 +255,25 @@ def plot(model, images, embeddings, filter=None, interactive=True, std=False, bi
                 fig.canvas.draw_idle()
 
         fig.canvas.mpl_connect("button_press_event", onclick)
-        plt.show()
+    plt.show()
+
+    data = embeddings[:, :2] if not std else embeddings[:, 2:]
+    # NOTE: start of 3D histogram
+    H, xedges, yedges = np.histogram2d(data[:, 0], data[:, 1], bins=bins)
+    X, Y = np.meshgrid((xedges[1:] + xedges[:-1]) / 2, (yedges[1:] + yedges[:-1]) / 2)
+    fig3, ax3 = plt.subplots(subplot_kw={"projection": "3d"})
+    ax3.plot_surface(X, Y, H, cmap="viridis")
+    plt.show()
+
+    # end of 3D histogram
+
+    labels = get_clustering(data)
+    
+    plt.scatter(data[labels>=0, 0], data[labels>=0, 1], c=labels[labels>=0])
+
+    return labels
 
 
-
-def generate_all_figs():
-    plot(interactive=False)
-    plt.savefig("all.png")
-
-    for h5 in tqdm(get_h5s()):
-        # clear figure
-        plt.figure()
-        terminal = os.path.basename(h5).split("_")[0]
-        plot(filter=terminal, interactive=False)
-        plt.savefig(f"{terminal}.png")
-
-
-        
-        
 
 def custom_generate_latent_grid(d: int, **kwargs) -> torch.Tensor:
     """
@@ -319,13 +283,13 @@ def custom_generate_latent_grid(d: int, **kwargs) -> torch.Tensor:
         d = [d, d]
     z_coord = kwargs.get("z_coord")
     if z_coord:
-        z1, z2, z3, z4 = z_coord
+        xmin, xmax, ymin, ymax = z_coord
         """ WRONG version
         grid_x = torch.linspace(z2, z1, d[0])
         grid_y = torch.linspace(z3, z4, d[1])
         """
-        grid_x = torch.linspace(z1, z2, d[0])
-        grid_y = torch.linspace(z4, z3, d[1])
+        grid_x = torch.linspace(xmin, xmax, d[0])
+        grid_y = torch.linspace(ymax, ymin, d[1])
     else:
         """ WRONG version
         grid_x = dist.Normal(0, 1).icdf(torch.linspace(0.95, 0.05, d[0]))
@@ -380,6 +344,9 @@ import dill as pickle  # allow pickling of lambda functions
 torch.serialization.register_package(0, lambda x: x.device.type, lambda x, _: x.cpu())
 
 if __name__ == "__main__":
+    xmin, xmax = -3, 3
+    ymin, ymax = -3, 3
+    bounds = [xmin, xmax, ymin, ymax]
     with MagicPickle("think-jason") as mp:
         if mp.is_remote:
             patch_data = np.load("patches.npz")["patches"]
@@ -395,32 +362,13 @@ if __name__ == "__main__":
             weights, patch_data, images, embeddings, patch_ids = mp.load()
             rvae, _ = load(patch_data)
             rvae = set_weights(rvae, weights)
-            custom_manifold2d(rvae, d=12, cmap="gray")
+            custom_manifold2d(rvae, d=12, cmap="gray", z_coord=bounds)
 
-            plot(rvae, images, embeddings, interactive=True, std=False)
+            labels = plot(rvae, images, embeddings, interactive=True, std=False, bounds=bounds)
             # plot(rvae, images, embeddings, interactive=True, std=True)
 
-            
             # since horizontal axis (idx 0) differentiates vesicle type
-            VESICLE_TYPE_INDEX = 0
-            print(f"VESICLE_TYPE_INDEX: {VESICLE_TYPE_INDEX}, needs to be verified after every train")
-            plot_1d(embeddings, VESICLE_TYPE_INDEX)
+            np.savez("vesicle_types.npz", labels=labels, ids=patch_ids)
 
-            np.savez("vesicle_types.npz", embeddings=embeddings[:, VESICLE_TYPE_INDEX], ids=patch_ids)
-
-        # plt.imshow(project(train_dataset[0][0].numpy()), cmap="gray")
-        # plt.show()
-        # plt.scatter(embeddings[:, 0], embeddings[:, 1])
-        # plt.show()
-        # for i in range(len(embeddings)):
-        #     # plot side by side
-        #     fig, ax = plt.subplots(1, 2)
-        #     ax[0].imshow(train_dataset[i][0].numpy(), cmap="gray")
-        # #     __import__('pdb').set_trace()
-        #     ax[1].imshow(recons(rvae, embeddings[i][0], embeddings[i][1]), cmap="gray")
-        #     plt.show()
-        #  setenv LD_LIBRARY_PATH LD_LIBRARY_PATH\:/data/adhinart/.conda/envs/vesicle/lib/
-        # plot(interactive=False)
-        # plt.show()
 
         # generate_all_figs()

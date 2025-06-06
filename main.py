@@ -1,16 +1,11 @@
-import os
-import glob
 import numpy as np
-import h5py
 
 import pyroved as pv
 import torch
 import torch.nn as nn
 from torch.utils.data import Dataset, DataLoader
-from torchvision import transforms as T
 
 import wandb
-from reloading import reloading
 
 
 # Add your custom dataset class here
@@ -67,17 +62,14 @@ def train(enable_wandb=True):
     # Create a dataloader object
 
     train_dataset = VesicleDataset(
-        np.load("/data/adhinart/hydra/patches.npz")["patches"], transforms=normalize
+        np.load("patches.npz")["patches"], transforms=normalize
     )
     train_loader = DataLoader(
         train_dataset, batch_size=32, shuffle=True, num_workers=32
     )
     rvae = pv.models.iVAE(
         train_dataset.data_dim,
-        # extra_data_dim=train_dataset.data_dim[2],
-        # latent_dim=16,
         latent_dim=2,
-        # invariances=None,
         invariances=["r", "t"],
         dx_prior=0.5,
         dy_prior=0.5,
@@ -86,9 +78,7 @@ def train(enable_wandb=True):
     trainer = pv.trainers.SVItrainer(rvae)
 
     # Train for 100 epochs
-
     for _ in range(100):
-        # for e in reloading(range(100)):
         trainer.step(train_loader)
         trainer.print_statistics()  # print running loss
         if enable_wandb:

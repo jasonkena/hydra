@@ -2,10 +2,13 @@ default:
     just --list
 
 generate_sample:
-    python generate_sample.py
+    uv run generate_sample.py
 
 train:
-    python main.py
+    uv run main.py
 
 plot:
+    uv run plot.py
+
+plot_local:
     python plot.py
