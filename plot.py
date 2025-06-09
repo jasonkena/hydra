@@ -88,13 +88,16 @@ def recons(model, x, y):
 
 
 def get_clustering(data):
-    clusterer = flat.HDBSCAN_flat(data, n_clusters = 2, min_cluster_size = 200, min_samples=1)
+    clusterer = flat.HDBSCAN_flat(
+        data, n_clusters=2, min_cluster_size=200, min_samples=1
+    )
     memberships = flat.all_points_membership_vectors_flat(clusterer)
     membership_labels = np.argmax(memberships, axis=1)
     # NOTE: this below also classifies things as noise
     # labels, prob = clusterer.labels_, clusterer.probabilities_
 
     return membership_labels
+
 
 def _get_extent(points):
     """Compute bounds on a space with appropriate padding"""
@@ -113,7 +116,6 @@ def _get_extent(points):
     return extent
 
 
-
 def contrast(img):
     return (img - np.min(img)) / (np.max(img) - np.min(img))
 
@@ -125,7 +127,16 @@ def read_images(train_dataset):
     return images
 
 
-def plot(model, images, embeddings, bounds=None, filter=None, interactive=True, std=False, bins=20):
+def plot(
+    model,
+    images,
+    embeddings,
+    bounds=None,
+    filter=None,
+    interactive=True,
+    std=False,
+    bins=20,
+):
     # interactive, whether to plot/activating onclick hook
 
     assert embeddings.shape[1] == 4
@@ -168,7 +179,6 @@ def plot(model, images, embeddings, bounds=None, filter=None, interactive=True, 
         extent = bounds
 
     print(f"extent: {extent}")
-
 
     # get current axis
     ax = plt.gca()
@@ -268,11 +278,11 @@ def plot(model, images, embeddings, bounds=None, filter=None, interactive=True, 
     # end of 3D histogram
 
     labels = get_clustering(data)
-    
-    plt.scatter(data[labels>=0, 0], data[labels>=0, 1], c=labels[labels>=0])
+
+    plt.scatter(data[labels >= 0, 0], data[labels >= 0, 1], c=labels[labels >= 0])
+    plt.show()
 
     return labels
-
 
 
 def custom_generate_latent_grid(d: int, **kwargs) -> torch.Tensor:
@@ -291,7 +301,7 @@ def custom_generate_latent_grid(d: int, **kwargs) -> torch.Tensor:
         grid_x = torch.linspace(xmin, xmax, d[0])
         grid_y = torch.linspace(ymax, ymin, d[1])
     else:
-        """ WRONG version
+        """WRONG version
         grid_x = dist.Normal(0, 1).icdf(torch.linspace(0.95, 0.05, d[0]))
         grid_y = dist.Normal(0, 1).icdf(torch.linspace(0.05, 0.95, d[1]))
         """
@@ -307,10 +317,14 @@ def custom_generate_latent_grid(d: int, **kwargs) -> torch.Tensor:
             z.append(torch.tensor([xi, yi]).float().unsqueeze(0))
     return torch.cat(z), (grid_x, grid_y)
 
-def custom_manifold2d(self, d: int,
-               y: torch.Tensor = None,
-               plot: bool = True,
-               **kwargs: Union[str, int, float]) -> torch.Tensor:
+
+def custom_manifold2d(
+    self,
+    d: int,
+    y: torch.Tensor = None,
+    plot: bool = True,
+    **kwargs: Union[str, int, float],
+) -> torch.Tensor:
     """
     custom manifold with custom generate_latent_grid
     """
@@ -319,24 +333,28 @@ def custom_manifold2d(self, d: int,
     z = [z]
     if self.c_dim > 0:
         if y is None:
-            raise ValueError("To generate a manifold pass a conditional vector y") 
+            raise ValueError("To generate a manifold pass a conditional vector y")
         y = y.unsqueeze(1) if 0 < y.ndim < 2 else y
         z = z + [y.expand(z[0].shape[0], *y.shape[1:])]
     loc = self.decode(*z, **kwargs)
     if plot:
         if self.ndim == 2:
             plot_img_grid(
-                loc, d,
+                loc,
+                d,
                 extent=[grid_x.min(), grid_x.max(), grid_y.min(), grid_y.max()],
-                **kwargs)
+                **kwargs,
+            )
         elif self.ndim == 1:
             plot_spect_grid(loc, d, **kwargs)
     return loc
+
 
 def plot_1d(embeddings, vesicle_type_index):
     # plot 1D histogram of embeddings[:, vesicle_type_index]
     plt.hist(embeddings[:, vesicle_type_index], bins=20)
     plt.show()
+
 
 import dill as pickle  # allow pickling of lambda functions
 
@@ -364,11 +382,10 @@ if __name__ == "__main__":
             rvae = set_weights(rvae, weights)
             custom_manifold2d(rvae, d=12, cmap="gray", z_coord=bounds)
 
-            labels = plot(rvae, images, embeddings, interactive=True, std=False, bounds=bounds)
+            labels = plot(
+                rvae, images, embeddings, interactive=True, std=False, bounds=bounds
+            )
             # plot(rvae, images, embeddings, interactive=True, std=True)
 
             # since horizontal axis (idx 0) differentiates vesicle type
             np.savez("vesicle_types.npz", labels=labels, ids=patch_ids)
-
-
-        # generate_all_figs()
