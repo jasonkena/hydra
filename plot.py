@@ -180,24 +180,42 @@ def plot(
 
     print(f"extent: {extent}")
 
+    data = embeddings[:, :2] if not std else embeddings[:, 2:]
+    labels = get_clustering(data)
+
+    H, _, _ = np.histogram2d(embeddings[:, 0], embeddings[:, 1], bins=bins)
+    vmin, vmax = np.min(H[H > 0]), np.max(H)
+
     # get current axis
     ax = plt.gca()
     ax.set_aspect("equal")
-    if not std:
+
+    ax.hist2d(
+        data[:, 0],
+        data[:, 1],
+        bins=bins,
+        range=[extent[:2], extent[2:]],
+        cmap="viridis",
+        vmin=vmin,
+        vmax=vmax,
+    )
+    plt.show()
+
+    ax = plt.gca()
+    ax.set_aspect("equal")
+
+    for i in range(2):
         ax.hist2d(
-            embeddings[:, 0],
-            embeddings[:, 1],
+            data[:, 0][labels == i],
+            data[:, 1][labels == i],
             bins=bins,
-            # range=[[-1.5, 1.5], [-1.5, 1.5]],
+            alpha=0.5,
             range=[extent[:2], extent[2:]],
+            cmap="Reds" if i == 0 else "Blues",
+            vmin=vmin,
+            vmax=vmax,
         )
-    else:
-        ax.hist2d(
-            embeddings[:, 2],
-            embeddings[:, 3],
-            bins=bins,
-            range=[extent[:2], extent[2:]],
-        )
+
     if interactive:
         print("interactive")
         fig = ax.get_figure()
@@ -210,10 +228,7 @@ def plot(
         )
         # im = OffsetImage(images[0], zoom=5, cmap="gray")
 
-        if not std:
-            kd = KDTree(embeddings[:, :2])
-        else:
-            kd = KDTree(embeddings[:, 2:])
+        kd = KDTree(data)
         xybox = (50.0, 50.0)
         ab = AnnotationBbox(
             im,
@@ -265,21 +280,6 @@ def plot(
                 fig.canvas.draw_idle()
 
         fig.canvas.mpl_connect("button_press_event", onclick)
-    plt.show()
-
-    data = embeddings[:, :2] if not std else embeddings[:, 2:]
-    # NOTE: start of 3D histogram
-    H, xedges, yedges = np.histogram2d(data[:, 0], data[:, 1], bins=bins)
-    X, Y = np.meshgrid((xedges[1:] + xedges[:-1]) / 2, (yedges[1:] + yedges[:-1]) / 2)
-    fig3, ax3 = plt.subplots(subplot_kw={"projection": "3d"})
-    ax3.plot_surface(X, Y, H, cmap="viridis")
-    plt.show()
-
-    # end of 3D histogram
-
-    labels = get_clustering(data)
-
-    plt.scatter(data[labels >= 0, 0], data[labels >= 0, 1], c=labels[labels >= 0])
     plt.show()
 
     return labels
