@@ -1,7 +1,5 @@
 import matplotlib
 
-matplotlib.use("TkAgg")
-
 import pyroved as pv
 from main import VesicleDataset, dataset_with_indices, normalize
 
@@ -362,6 +360,7 @@ import dill as pickle  # allow pickling of lambda functions
 torch.serialization.register_package(0, lambda x: x.device.type, lambda x, _: x.cpu())
 
 if __name__ == "__main__":
+    matplotlib.use("TkAgg")
     xmin, xmax = -3, 3
     ymin, ymax = -3, 3
     bounds = [xmin, xmax, ymin, ymax]

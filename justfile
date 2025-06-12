@@ -12,3 +12,6 @@ plot:
 
 plot_local:
     python plot.py
+
+demo:
+    uv run demo.py

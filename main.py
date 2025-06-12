@@ -53,7 +53,7 @@ def normalize(x):
     return (x - x.min()) / (x.max() - x.min() + 1e-6)
 
 
-def train(enable_wandb=True):
+def train(patches_path, enable_wandb, model_name):
     # Initialize VAE model
 
     if enable_wandb:
@@ -62,7 +62,7 @@ def train(enable_wandb=True):
     # Create a dataloader object
 
     train_dataset = VesicleDataset(
-        np.load("patches.npz")["patches"], transforms=normalize
+        np.load(patches_path)["patches"], transforms=normalize
     )
     train_loader = DataLoader(
         train_dataset, batch_size=32, shuffle=True, num_workers=32
@@ -83,8 +83,8 @@ def train(enable_wandb=True):
         trainer.print_statistics()  # print running loss
         if enable_wandb:
             wandb.log({"loss": trainer.loss_history["training_loss"][-1]})
-    rvae.save_weights("model")
+    rvae.save_weights(model_name)
 
 
 if __name__ == "__main__":
-    train()
+    train("patches.npz", enable_wandb=True, model_name="model")
