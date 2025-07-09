@@ -354,8 +354,6 @@ def plot_1d(embeddings, vesicle_type_index):
     plt.show()
 
 
-import dill as pickle  # allow pickling of lambda functions
-
 # https://stackoverflow.com/a/78399538/10702372
 torch.serialization.register_package(0, lambda x: x.device.type, lambda x, _: x.cpu())
 
@@ -364,27 +362,18 @@ if __name__ == "__main__":
     xmin, xmax = -3, 3
     ymin, ymax = -3, 3
     bounds = [xmin, xmax, ymin, ymax]
-    with MagicPickle("think-jason") as mp:
-        if mp.is_remote:
-            patch_data = np.load("patches.npz")["patches"]
-            patch_ids = np.load("patches.npz")["ids"]
-            weights = torch.load("model.pt")
-            rvae, train_dataset = load(patch_data)
-            rvae = set_weights(rvae, weights)
-            images = read_images(train_dataset)
-            embeddings = get_embeddings(rvae, train_dataset)
-            # move weights to cpu
-            mp.save((weights, patch_data, images, embeddings, patch_ids))
-        else:
-            weights, patch_data, images, embeddings, patch_ids = mp.load()
-            rvae, _ = load(patch_data)
-            rvae = set_weights(rvae, weights)
-            custom_manifold2d(rvae, d=12, cmap="gray", z_coord=bounds)
+    patch_data = np.load("patches.npz")["patches"]
+    patch_ids = np.load("patches.npz")["ids"]
+    weights = torch.load("model.pt")
+    rvae, train_dataset = load(patch_data)
+    rvae = set_weights(rvae, weights)
+    images = read_images(train_dataset)
+    embeddings = get_embeddings(rvae, train_dataset)
 
-            labels = plot(
-                rvae, images, embeddings, interactive=True, std=False, bounds=bounds
-            )
-            # plot(rvae, images, embeddings, interactive=True, std=True)
+    custom_manifold2d(rvae, d=12, cmap="gray", z_coord=bounds)
 
-            # since horizontal axis (idx 0) differentiates vesicle type
-            np.savez("vesicle_types.npz", labels=labels, ids=patch_ids)
+    labels = plot(rvae, images, embeddings, interactive=True, std=False, bounds=bounds)
+    # plot(rvae, images, embeddings, interactive=True, std=True)
+
+    # since horizontal axis (idx 0) differentiates vesicle type
+    np.savez("vesicle_types.npz", labels=labels, ids=patch_ids)

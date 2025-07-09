@@ -1,18 +1,25 @@
+import os
 import numpy as np
 import glob
 import h5py
 
 
 def main():
-    # /data/projects/weilab/dataset/hydra/results/vesicle_small_*_30-8-8_patch.h5
+    PATH = "/projects/weilab/dataset/hydra/results/"
     files = sorted(
         glob.glob(
-            "/projects/weilab/dataset/hydra/results/vesicle_small_*_30-8-8_patch.h5"
+            os.path.join(
+                PATH,
+                "vesicle_small_*_30-8-8_patch.h5",
+            )
         )
     )
     bbs = sorted(
         glob.glob(
-            "/projects/weilab/dataset/hydra/results/vesicle_small-bbs_*_30-8-8.h5"
+            os.path.join(
+                PATH,
+                "vesicle_small-bbs_*_30-8-8.h5",
+            )
         )
     )
     assert len(files) == len(bbs)
