@@ -85,9 +85,9 @@ def recons(model, x, y):
     return img
 
 
-def get_clustering(data, min_cluster_size=200):
+def get_clustering(data):
     clusterer = flat.HDBSCAN_flat(
-        data, n_clusters=2, min_cluster_size=min_cluster_size, min_samples=1
+        data, n_clusters=2, min_cluster_size=200, min_samples=1
     )
     memberships = flat.all_points_membership_vectors_flat(clusterer)
     membership_labels = np.argmax(memberships, axis=1)
@@ -134,7 +134,6 @@ def plot(
     interactive=True,
     std=False,
     bins=20,
-    min_cluster_size=200,
 ):
     # interactive, whether to plot/activating onclick hook
 
@@ -180,7 +179,7 @@ def plot(
     print(f"extent: {extent}")
 
     data = embeddings[:, :2] if not std else embeddings[:, 2:]
-    labels = get_clustering(data,min_cluster_size)
+    labels = get_clustering(data)
 
     H, _, _ = np.histogram2d(embeddings[:, 0], embeddings[:, 1], bins=bins)
     vmin, vmax = np.min(H[H > 0]), np.max(H)
